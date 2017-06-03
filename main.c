@@ -28,24 +28,6 @@ void USART_put(volatile char *string)
 		USART_Transmit(*string++);
 }
 
-unsigned char USART_Receive(void)
-{
-	/* Wait for data to be received */
-	while (!(UCSR0A & (1<<RXC0)));
-	/* Get and return received data from buffer */
-	return UDR0;
-}
-
-ISR(TIMER2_COMPA_vect) // LED ON
-{
-	PORTD |= _BV(PORTD2);
-}
-
-ISR(TIMER2_COMPB_vect) // LED OFF
-{
-	PORTD &= ~_BV(PORTD2);
-}
-
 ISR(TIMER1_COMPA_vect) // Buzz ON
 {
 	PORTD |= _BV(PORTD3);
@@ -54,16 +36,6 @@ ISR(TIMER1_COMPA_vect) // Buzz ON
 ISR(TIMER1_COMPB_vect) // Buzz OFF
 {
 	PORTD &= ~_BV(PORTD3);
-}
-
-void Init1KhzSquareWave(void) // this is for the LED
-{
-	DDRD |= _BV(PORTD2); // set output pin
-	TCCR2A |= _BV(WGM21); // set CTC
-	TIMSK2 |= _BV(OCIE2A) | _BV(OCIE2B); // set compare interrupts on timer2 COMPA & B
-	TCCR2B |= _BV(CS21) |_BV(CS20); // set prescalar 32
-	OCR2A = F_CPU/(1000 * 2 * 32); // 250 end
-	OCR2B = OCR2A / 2; // 50% duty cycle
 }
 
 void InitVariablePWMFrequencyClk(void) // this is for the piezo
@@ -79,7 +51,7 @@ void InitVariablePWMFrequencyClk(void) // this is for the piezo
 
 void InitADC(void)
 {
-	ADMUX |= 1; // Start with ADC0
+	ADMUX |= 1; // Start with ADC1
 	ADMUX |= _BV(REFS0); // Set ADC reference to AVCC -- needs 5 volts on
 	ADMUX &= ~_BV(ADLAR); // clear for 10bit mode, 8 bit mode when being set
 	
@@ -98,26 +70,15 @@ ISR(ADC_vect)
 {	
 	ADCValue = ADCL;
 	ADCValue = (ADCH << 8) + ADCValue;
-	
-	if ((ADMUX & 0b00000001) == 0) // LED
-	{
-		// adjust PWM duty cycle
-		OCR2B = ADCValue >> 2; // sensor resolution 0 - 250 due to 8bit timer @ 1khz
-	}
-	else // potentiometer
-	{
-		// adjust frequency of the clock
-		OCR1A = 7644 + ADCValue * 7; // 7644 -> 2093 hz, 15296 -> 1043 hz
-		OCR1B = OCR1A / 10000; // 50% duty cycle
-	
-	}	
+	// adjust frequency of the clock
+	OCR1A = 7644 + ADCValue * 7; // 7644 -> 2093 hz, 15296 -> 1043 hz
+	OCR1B = OCR1A / 10000; // 50% duty cycle
 }
 
 void setup(void) 
 {
 	sei(); // enable global interrupts
 	InitADC();
-	Init1KhzSquareWave();
 	InitVariablePWMFrequencyClk();
 	USART_Init(MYUBRR);
 }
@@ -126,27 +87,11 @@ int main(void)
 {
 	setup();
 	volatile char uart_out[5] = {0};
-	unsigned short pot_bias = 0;
     while (1) 
     {
-		// switches between the states
-		if ((ADMUX & 0x1) == 0) // LED
-		{
-			pot_bias = 0;
-			ADMUX |= _BV(0);
-			itoa(ADCValue, uart_out, 10);
-			USART_put(uart_out);
-			USART_put("\n\r");
-		}
-		else // potentiometer
-		{
-			if (pot_bias++ > 13)
-				ADMUX &= ~(_BV(0));
-				
-			itoa(7644 + ADCValue * 7 + 490, uart_out, 10);
-			USART_put(uart_out);
-			USART_put("\n\r");
-		}
+	itoa(7644 + ADCValue * 7 + 490, uart_out, 10);
+	USART_put(uart_out);
+	USART_put("\n\r");
     }
 	return 0;
 }
